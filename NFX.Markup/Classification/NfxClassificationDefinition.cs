@@ -41,6 +41,18 @@ namespace NFX.Classification
     [Export(typeof(ClassificationTypeDefinition))]
     [Name(Consts.SpecialTokenName)]
     internal static ClassificationTypeDefinition specialToken = null;
+
+    [Export(typeof(ClassificationTypeDefinition))]
+    [Name(Consts.AreaTokenName)]
+    internal static ClassificationTypeDefinition areaToken = null;
+
+    [Export(typeof(ClassificationTypeDefinition))]
+    [Name(Consts.StatementAreaTokenName)]
+    internal static ClassificationTypeDefinition statementAreaToken = null;
+
+    [Export(typeof(ClassificationTypeDefinition))]
+    [Name(Consts.ExpressionAreaTokenName)]
+    internal static ClassificationTypeDefinition expressionAreaToken = null;
   }
 }
 
@@ -56,5 +68,8 @@ internal static class Consts
   internal const string BraceTokenName = "BraceTokenName";
   internal const string LiteralTokenName = "LiteralTokenName";
   internal const string CommentTokenName = "CommentTokenName";
-  internal const string SpecialTokenName = "SpecialTokenName";
+  internal const string SpecialTokenName = "SpecialTokenName"; 
+  internal const string AreaTokenName = "AreaToken";
+  internal const string StatementAreaTokenName = "StatementAreaToken";
+  internal const string ExpressionAreaTokenName = "ExpressionAreaToken";
 }

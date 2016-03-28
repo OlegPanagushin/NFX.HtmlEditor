@@ -2,8 +2,7 @@
 using System.Collections.Generic;
 using System.ComponentModel.Composition;
 using System.Linq;
-using System.Reflection;
-using System.Runtime.InteropServices;
+using System.Reflection;               
 using System.Text;
 using Microsoft.VisualStudio.Text;
 using Microsoft.VisualStudio.Text.Classification;
@@ -13,9 +12,7 @@ using NFX.CodeAnalysis;
 using NFX.CodeAnalysis.CSharp;
 using NFX.CodeAnalysis.Laconfig;
 using NFX.CodeAnalysis.Source;
-using NFX.Environment;
-//using EnvDTE;
-//using EnvDTE80;
+using NFX.Environment;      
 
 
 namespace NFX.Classification
@@ -89,6 +86,9 @@ namespace NFX.Classification
         [NfxTokenTypes.Literal] = typeService.GetClassificationType(Consts.LiteralTokenName),
         [NfxTokenTypes.Comment] = typeService.GetClassificationType(Consts.CommentTokenName),
         [NfxTokenTypes.Special] = typeService.GetClassificationType(Consts.SpecialTokenName),
+        [NfxTokenTypes.Area] = typeService.GetClassificationType(Consts.AreaTokenName),
+        [NfxTokenTypes.ExpressionArea] = typeService.GetClassificationType(Consts.ExpressionAreaTokenName),
+        [NfxTokenTypes.StatementArea] = typeService.GetClassificationType(Consts.StatementAreaTokenName),
       };
     }
 
@@ -100,7 +100,23 @@ namespace NFX.Classification
 
     IEnumerable<ITagSpan<IErrorTag>> ITagger<IErrorTag>.GetTags(NormalizedSnapshotSpanCollection spans)
     {
-        return _errorTags ?? new List<ITagSpan<IErrorTag>>();
+
+      if (spans.Count > 0)
+      {
+        var newSpanshot = spans[0].Snapshot;
+        if (_snapshot != newSpanshot)
+        {
+          _snapshot = newSpanshot;
+
+          lock (updateLock)
+          {
+            TagsChanged?.Invoke(this,
+              new SnapshotSpanEventArgs(new SnapshotSpan(newSpanshot, 0, newSpanshot.Length)));
+          }
+        }
+      }
+      return _errorTags ?? new List<ITagSpan<IErrorTag>>();
+
     }
     /// <summary>
     /// Search the given span for any instances of classified tags
@@ -126,7 +142,6 @@ namespace NFX.Classification
       var text = sb.ToString();
 
       var k = 0;
-      //TODO Переделать на получение зон
       while (k < text.Length)        //#[] - area
       {
         if (text[k] == '#')
@@ -145,8 +160,9 @@ namespace NFX.Classification
                 tags.Add(CreateTagSpan(o, 1, NfxTokenTypes.ExpressionBrace)); //]
 
                 var j = k + 2;
-                FindCSharpTokens(tags, text, j, o - j);
+                //FindCSharpTokens(tags, text, j, o - j);
                 FindAdditionalsTokens(tags, text, j, o - j, "render", "class");
+                tags.Add(CreateTagSpan(j, o -j, NfxTokenTypes.Area));
                 break;
               }
               o++;
@@ -172,6 +188,7 @@ namespace NFX.Classification
                 var j = k + 2;
                 FindCSharpTokens(tags, text, j, o - j);
                 FindAdditionalsTokens(tags, text, j, o - j);
+                tags.Add(CreateTagSpan(j, o - j, NfxTokenTypes.StatementArea));
                 break;
               }
               o++;
@@ -198,6 +215,7 @@ namespace NFX.Classification
 
                 FindCSharpTokens(tags, text, j, o - j);
                 FindAdditionalsTokens(tags, text, j, o - j);
+                tags.Add(CreateTagSpan(j, o - j, NfxTokenTypes.ExpressionArea));
                 break;
               }
               o++;
@@ -244,7 +262,7 @@ namespace NFX.Classification
                   _errorTags = new List<ITagSpan<IErrorTag>>();
                   foreach (var message in ml)
                   {
-                    //TODO messages to output
+                    //TODO messages to output                         
                     _errorTags.Add(CreateTagSpan(j, o - LACONFIG_END.Length - j));
                   }
                 }         
@@ -346,7 +364,7 @@ namespace NFX.Classification
           curType = NfxTokenTypes.KeyWord;
         else if (token.IsLiteral)
           curType = NfxTokenTypes.Literal;
-        else if (token.IsSymbol)
+        else if (token.IsSymbol || token.IsOperator)
           curType = NfxTokenTypes.Brace;
 
         if (curType.HasValue)
@@ -474,36 +492,4 @@ namespace NFX.Classification
       return true;
     }
   }
-
-  //internal class VsOutputLogger
-  //{
-  //  private static Lazy<Action<string>> _Logger = new Lazy<Action<string>>(() => GetWindow().OutputString);
-
-  //  private static Action<string> Logger
-  //  {
-  //    get { return _Logger.Value; }
-  //  }
-
-  //  public static void SetLogger(Action<string> logger)
-  //  {
-  //    _Logger = new Lazy<Action<string>>(() => logger);
-  //  }
-
-  //  public static void Write(string format, params object[] args)
-  //  {
-  //    var message = string.Format(format, args);
-  //    Write(message);
-  //  }
-
-  //  public static void Write(string message)
-  //  {
-  //    Logger(message + Environment.NewLine);
-  //  }
-
-  //  private static OutputWindowPane GetWindow()
-  //  {
-  //    var dte = (DTE2)Marshal.GetActiveObject("VisualStudio.DTE");
-  //    return dte.ToolWindows.OutputWindow.ActivePane;
-  //  }
-  //}
 }

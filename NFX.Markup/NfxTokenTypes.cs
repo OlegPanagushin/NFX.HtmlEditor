@@ -12,6 +12,9 @@
         Brace,
         Literal,
         Comment,
-        Special
+        Special,
+        Area,
+        ExpressionArea,
+        StatementArea,
 	}
 }
