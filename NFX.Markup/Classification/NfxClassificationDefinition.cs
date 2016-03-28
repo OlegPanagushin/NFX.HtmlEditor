@@ -37,6 +37,10 @@ namespace NFX.Classification
     [Export(typeof(ClassificationTypeDefinition))]
     [Name(Consts.CommentTokenName)]
     internal static ClassificationTypeDefinition commentToken = null;
+
+    [Export(typeof(ClassificationTypeDefinition))]
+    [Name(Consts.SpecialTokenName)]
+    internal static ClassificationTypeDefinition specialToken = null;
   }
 }
 
@@ -52,4 +56,5 @@ internal static class Consts
   internal const string BraceTokenName = "BraceTokenName";
   internal const string LiteralTokenName = "LiteralTokenName";
   internal const string CommentTokenName = "CommentTokenName";
+  internal const string SpecialTokenName = "SpecialTokenName";
 }

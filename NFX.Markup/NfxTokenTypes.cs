@@ -11,6 +11,7 @@
         Error,
         Brace,
         Literal,
-        Comment
+        Comment,
+        Special
 	}
 }

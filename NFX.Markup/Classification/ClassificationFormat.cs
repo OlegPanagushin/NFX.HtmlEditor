@@ -103,7 +103,7 @@ namespace NFX.Classification
     public LiteralToken()
     {
       DisplayName = "Literal";
-      ForegroundColor = Colors.Red;
+      ForegroundColor = Colors.Sienna;
     }
   }
 
@@ -118,6 +118,21 @@ namespace NFX.Classification
     {
       DisplayName = "Comment";
       ForegroundColor = Colors.Green;
+    }
+  }
+
+  [Export(typeof(EditorFormatDefinition))]
+  [ClassificationType(ClassificationTypeNames = Consts.Nfx)]
+  [Name(Consts.SpecialTokenName)]
+  [UserVisible(false)]
+  [Order(Before = Priority.High)]
+  internal sealed class SpecialToken : ClassificationFormatDefinition
+  {
+    public SpecialToken()
+    {
+      DisplayName = "Special word";
+      ForegroundColor = Colors.Blue;
+      IsBold = true;
     }
   }
 }

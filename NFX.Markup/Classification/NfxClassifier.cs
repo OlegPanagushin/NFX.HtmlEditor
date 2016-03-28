@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.ComponentModel.Composition;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Text;
 using Microsoft.VisualStudio.Text;
 using Microsoft.VisualStudio.Text.Classification;
@@ -12,16 +13,21 @@ using NFX.CodeAnalysis;
 using NFX.CodeAnalysis.CSharp;
 using NFX.CodeAnalysis.Laconfig;
 using NFX.CodeAnalysis.Source;
+using NFX.Environment;
+//using EnvDTE;
+//using EnvDTE80;
+
 
 namespace NFX.Classification
 {
-  [Export(typeof (ITaggerProvider))]
+  [Export(typeof(ITaggerProvider))]
   [ContentType(Consts.Nfx)]
-  [TagType(typeof (IClassificationTag))]
+  [TagType(typeof(IClassificationTag))]
+  [TagType(typeof(IErrorTag))]
   internal sealed class NfxClassifierProvider : ITaggerProvider
   {
-    [Export]                          
-    [BaseDefinition("html")]    
+    [Export]
+    [BaseDefinition("html")]
     [Name(Consts.Nfx)]
     internal static ContentTypeDefinition NfxContentType { get; set; }
 
@@ -31,7 +37,7 @@ namespace NFX.Classification
     internal static FileExtensionToContentTypeDefinition NfxFileType { get; set; }
 
     [Import]
-    internal IClassificationTypeRegistryService ClassificationTypeRegistry { get; set; }    
+    internal IClassificationTypeRegistryService ClassificationTypeRegistry { get; set; }
 
     [Import]
     internal IBufferTagAggregatorFactoryService TagAggregatorFactoryService { get; set; }
@@ -43,12 +49,12 @@ namespace NFX.Classification
     internal IContentTypeRegistryService ContentTypeRegistryService { get; set; }
 
     public ITagger<T> CreateTagger<T>(ITextBuffer buffer) where T : ITag
-    {                                                                                    
+    {
       return new NfxClassifier(ClassificationTypeRegistry, BufferFactory, TagAggregatorFactoryService, ContentTypeRegistryService) as ITagger<T>;
-    }           
+    }
   }
 
-  internal sealed class NfxClassifier : ITagger<IClassificationTag>
+  internal sealed class NfxClassifier : ITagger<IClassificationTag>, ITagger<IErrorTag>
   {
     readonly IDictionary<NfxTokenTypes, IClassificationType> _nfxTypes;
 
@@ -71,7 +77,7 @@ namespace NFX.Classification
       _cssContentType = contentTypeRegistryService.GetContentType("css");
       _javaScripContentType = contentTypeRegistryService.GetContentType("JavaScript");
 
-    _nfxTypes = new Dictionary<NfxTokenTypes, IClassificationType>
+      _nfxTypes = new Dictionary<NfxTokenTypes, IClassificationType>
       {
         [NfxTokenTypes.Laconf] = typeService.GetClassificationType(Consts.LaconfTokenName),
         [NfxTokenTypes.Expression] = typeService.GetClassificationType(Consts.ExpressionTokenName),
@@ -82,13 +88,20 @@ namespace NFX.Classification
         [NfxTokenTypes.Brace] = typeService.GetClassificationType(Consts.BraceTokenName),
         [NfxTokenTypes.Literal] = typeService.GetClassificationType(Consts.LiteralTokenName),
         [NfxTokenTypes.Comment] = typeService.GetClassificationType(Consts.CommentTokenName),
+        [NfxTokenTypes.Special] = typeService.GetClassificationType(Consts.SpecialTokenName),
       };
     }
 
-    public event EventHandler<SnapshotSpanEventArgs> TagsChanged ;
+    public event EventHandler<SnapshotSpanEventArgs> TagsChanged;
 
     private ITextSnapshot _snapshot;
     private List<ITagSpan<IClassificationTag>> _oldtags;
+    private static List<ITagSpan<IErrorTag>> _errorTags;
+
+    IEnumerable<ITagSpan<IErrorTag>> ITagger<IErrorTag>.GetTags(NormalizedSnapshotSpanCollection spans)
+    {
+        return _errorTags ?? new List<ITagSpan<IErrorTag>>();
+    }
     /// <summary>
     /// Search the given span for any instances of classified tags
     /// </summary>
@@ -102,51 +115,76 @@ namespace NFX.Classification
       if (_snapshot == newSpanshot)
         return _oldtags;
 
-      _snapshot = newSpanshot;                          
-    
+      _snapshot = newSpanshot;
+
       var sb = new StringBuilder();
       for (var i = 0; i < newSpanshot.Length; i++)
       {
         sb.Append(newSpanshot[i]);
       }
-     
+
       var text = sb.ToString();
-                                           
+
       var k = 0;
       //TODO Переделать на получение зон
-      while (k < text.Length)
+      while (k < text.Length)        //#[] - area
       {
-        if (text[k] == '@' || text[k] == '#')
+        if (text[k] == '#')
         {
           if (text.Length - k > 1 &&
-              ((text[k] == '@' && (k == 0 || text[k - 1] != '@')) ||
-               (text[k] == '#' && (k == 0 || text[k - 1] != '#'))))
+              text[k + 1] == '[' &&
+              text[k] == '#' &&
+              (k == 0 || text[k - 1] != '#'))
           {
-            if (text[k + 1] == '[')
+            var o = k + 1;
+            while (o < text.Length)
             {
-              var o = k + 1;
-              while (o < text.Length)
+              if (text[o] == ']')
               {
-                if (text[o] == ']')
-                {
-                  tags.Add(CreateTagSpan(k, 2, NfxTokenTypes.ExpressionBrace)); // @[ OR #[ 
-                  tags.Add(CreateTagSpan(o, 1, NfxTokenTypes.ExpressionBrace)); //]
+                tags.Add(CreateTagSpan(k, 2, NfxTokenTypes.ExpressionBrace)); //#[ 
+                tags.Add(CreateTagSpan(o, 1, NfxTokenTypes.ExpressionBrace)); //]
 
-                  var j = k + 2;
-                  FindCSharpTokens(tags, text, j, o - j);
-                  FindCustomTokens(tags, text, j, o - j);
-                  break;
-                }
-                o++;
+                var j = k + 2;
+                FindCSharpTokens(tags, text, j, o - j);
+                FindAdditionalsTokens(tags, text, j, o - j, "render", "class");
+                break;
               }
+              o++;
             }
           }
         }
 
-        if (text[k] == '?')
+        if (text[k] == '@')    //@[statement]
         {
-          if (text.Length - k > 1 && text[k + 1] == '[' &&
-            text[k] == '?' && (k == 0 || text[k - 1] != '?'))
+          if (text.Length - k > 1 &&
+              text[k] == '@' &&
+              text[k + 1] == '[' &&
+              (k == 0 || text[k - 1] != '@'))
+          {
+            var o = k + 1;
+            while (o < text.Length)
+            {
+              if (text[o] == ']')
+              {
+                tags.Add(CreateTagSpan(k, 2, NfxTokenTypes.ExpressionBrace)); //#[ 
+                tags.Add(CreateTagSpan(o, 1, NfxTokenTypes.ExpressionBrace)); //]
+
+                var j = k + 2;
+                FindCSharpTokens(tags, text, j, o - j);
+                FindAdditionalsTokens(tags, text, j, o - j);
+                break;
+              }
+              o++;
+            }
+          }
+        }
+
+        if (text[k] == '?') //Experession ?[]
+        {
+          if (text.Length - k > 1
+            && text[k + 1] == '[' &&
+            text[k] == '?'
+            && (k == 0 || text[k - 1] != '?'))
           {
             var o = k + 1;
             while (o < text.Length)
@@ -159,7 +197,7 @@ namespace NFX.Classification
                 var j = k + 2;
 
                 FindCSharpTokens(tags, text, j, o - j);
-                FindCustomTokens(tags, text, j, o - j);
+                FindAdditionalsTokens(tags, text, j, o - j);
                 break;
               }
               o++;
@@ -167,19 +205,19 @@ namespace NFX.Classification
           }
         }
 
-        if (text[k] == '#' && text[k] == '#' && (k == 0 || text[k - 1] != '#'))
+        if (text[k] == '#' && text[k] == '#' && (k == 0 || text[k - 1] != '#'))     //class section
         {
           if (text.Length - k > CLASS_AREA_FULL.Length &&
               text.Substring(k, CLASS_AREA_FULL.Length) == CLASS_AREA_FULL) //#[class]
           {
             var j = k + CLASS_AREA_FULL.Length;
-            var o = text.IndexOf("#[", j, StringComparison.OrdinalIgnoreCase);            
+            var o = text.IndexOf("#[", j, StringComparison.OrdinalIgnoreCase);
             FindCSharpTokens(tags, text, j, o > -1 ? o : text.Length - j);
-                FindCustomTokens(tags, text, j, o > -1 ? o : text.Length - j);
+            FindAdditionalsTokens(tags, text, j, o > -1 ? o : text.Length - j);
           }
         }
 
-        if (text[k] == '#' && text[k] == '#' && (k == 0 || text[k - 1] != '#'))
+        if (text[k] == '#' && text[k] == '#' && (k == 0 || text[k - 1] != '#'))       //laconic config
         {
           if (text.Length - k > LACONFIG_START.Length &&
               text.Substring(k, LACONFIG_START.Length) == LACONFIG_START) //#<laconf>
@@ -197,7 +235,19 @@ namespace NFX.Classification
 
                 var ml = new MessageList();
                 var lxr = new LaconfigLexer(new StringSource(text.Substring(j, o - j)), ml);
-                lxr.AnalyzeAll();
+                var cfg = new LaconicConfiguration();
+                var ctx = new LaconfigData(cfg);
+                var p = new LaconfigParser(ctx, lxr, ml);
+                p.Parse();
+                lock (updateLock)
+                {
+                  _errorTags = new List<ITagSpan<IErrorTag>>();
+                  foreach (var message in ml)
+                  {
+                    //TODO messages to output
+                    _errorTags.Add(CreateTagSpan(j, o - LACONFIG_END.Length - j));
+                  }
+                }         
                 for (var i = 0; i < lxr.Tokens.Count; i++)
                 {
                   NfxTokenTypes? curType = null;
@@ -218,9 +268,9 @@ namespace NFX.Classification
               o++;
             }
           }
-        }    
+        }
 
-        if (text[k] == '<')
+        if (text[k] == '<')                //styles
         {
           if (text.Length - k > STYLE_START.Length &&
               text.Substring(k, STYLE_START.Length) == STYLE_START)
@@ -233,14 +283,14 @@ namespace NFX.Classification
               {
                 var tt = text.Substring(k + STYLE_START.Length, o - k - STYLE_START.Length);
 
-                FindPropTags(tags, _cssContentType, tt, k);                      
+                FindPropTags(tags, _cssContentType, tt, k);
               }
               o++;
             }
           }
         }
 
-        if (text[k] == '<')
+        if (text[k] == '<')                            //scripts
         {
           if (text.Length - k > SCRIPT_START.Length &&
               text.Substring(k, SCRIPT_START.Length) == SCRIPT_START)
@@ -252,7 +302,7 @@ namespace NFX.Classification
                   text.Substring(o, SCRIP_END.Length) == SCRIP_END)
               {
                 var tt = text.Substring(k + SCRIPT_START.Length, o - k - SCRIPT_START.Length);
-                 FindPropTags(tags, _javaScripContentType, tt, k);
+                FindPropTags(tags, _javaScripContentType, tt, k);
               }
               o++;
             }
@@ -263,7 +313,7 @@ namespace NFX.Classification
       }
       SynchronousUpdate(_snapshot, _oldtags, tags);
 
-      _oldtags = tags;   
+      _oldtags = tags;
       return tags;
     }
 
@@ -277,11 +327,11 @@ namespace NFX.Classification
         //  oldTags.Except(newTags).Any())
         {
           TagsChanged?.Invoke(this, new SnapshotSpanEventArgs(new SnapshotSpan(snapshotSpan, 0, snapshotSpan.Length)));
-        }   
+        }
       }
     }
 
-    internal void FindCSharpTokens(List<ITagSpan<IClassificationTag>> tags, string text, int sourceStart,int length)
+    internal void FindCSharpTokens(List<ITagSpan<IClassificationTag>> tags, string text, int sourceStart, int length)
     {
       var ml = new MessageList();
       var lxr = new CSLexer(new StringSource(text.Substring(sourceStart, length)), ml);
@@ -304,7 +354,7 @@ namespace NFX.Classification
       }
     }
 
-    internal void FindPropTags(List<ITagSpan<IClassificationTag>>  tags, IContentType contetType, string textSpan, int bufferStartPosition)
+    internal void FindPropTags(List<ITagSpan<IClassificationTag>> tags, IContentType contetType, string textSpan, int bufferStartPosition)
     {
       var buffer = _bufferFactory.CreateTextBuffer(textSpan,
                   contetType);
@@ -329,17 +379,19 @@ namespace NFX.Classification
               .GetValue(mappingTagSpan.Span);
           tags.Add(
             new TagSpan<IClassificationTag>(
-              new SnapshotSpan(_snapshot, bufferStartPosition + STYLE_START.Length + anchor.Start, anchor.Length +( contetType.TypeName == "css" ? 0 : 1)),
+              new SnapshotSpan(_snapshot, bufferStartPosition + STYLE_START.Length + anchor.Start, anchor.Length + (contetType.TypeName == "css" ? 0 : 1)),
               mappingTagSpan.Tag));
         }
-      }     
+      }
     }
 
-    internal void FindCustomTokens(List<ITagSpan<IClassificationTag>> tags, string text, int start, int length)
+    internal void FindAdditionalsTokens(List<ITagSpan<IClassificationTag>> tags, string text, int start, int length,
+      params string[] additionalTokens)
     {
       var j = start;
       var word = new StringBuilder();
-      while (j < start + length)
+      var o = start + length;
+      while (j < o)
       {
         var c = text[j];
         if (char.IsLetter(c))
@@ -348,14 +400,26 @@ namespace NFX.Classification
         }
         else if (word.Length > 0)
         {
-          if (CustomTokens.Any(x => word.Compare(x)))
-          {
-            var w = word.ToString();
-            tags.Add(CreateTagSpan(j - w.Length, w.Length, NfxTokenTypes.KeyWord));
-          }
+          Find(word, tags, j, additionalTokens);
           word = new StringBuilder();
         }
+        if (word.Length > 0 && j + 1 == o)
+          Find(word, tags, j, additionalTokens);
         j++;
+      }
+    }
+
+    void Find(StringBuilder word, List<ITagSpan<IClassificationTag>> tags, int j, params string[] additionalTokens)
+    {
+      if (ContextCSharpTokens.Any(word.Compare))
+      {
+        var w = word.ToString();
+        tags.Add(CreateTagSpan(j - w.Length, w.Length, NfxTokenTypes.KeyWord));
+      }
+      if (additionalTokens != null && additionalTokens.Any(word.Compare))
+      {
+        var w = word.ToString();
+        tags.Add(CreateTagSpan(j - w.Length, w.Length, NfxTokenTypes.Special));
       }
     }
 
@@ -365,23 +429,30 @@ namespace NFX.Classification
       return
         new TagSpan<IClassificationTag>(tokenSpan,
           new ClassificationTag(_nfxTypes[type]));
-    }                 
+    }
+
+    internal TagSpan<IErrorTag> CreateTagSpan(int startIndex, int length)
+    {
+      var tokenSpan = new SnapshotSpan(_snapshot, new Span(startIndex, length));
+      return
+        new TagSpan<IErrorTag>(tokenSpan, new ErrorTag());
+    }
 
     public const string CONFIG_START = "#<conf>";
-    public const string CONFIG_END = "#</conf>";    
+    public const string CONFIG_END = "#</conf>";
     public const string LACONFIG_START = "#<laconf>";
-    public const string LACONFIG_END = "#</laconf>";  
-    public const string CLASS_AREA_FULL = "#[class]"; 
+    public const string LACONFIG_END = "#</laconf>";
+    public const string CLASS_AREA_FULL = "#[class]";
     public const string STYLE_START = "<style>";
     public const string STYLE_END = "</style>";
     public const string SCRIPT_START = "<script>";
     public const string SCRIP_END = "</script>";
 
-    public List<string> CustomTokens = new List<string>
+    public List<string> ContextCSharpTokens = new List<string>
     {
       "string",
       "get",
-      "set",       
+      "set",
     };
   }
 
@@ -403,4 +474,36 @@ namespace NFX.Classification
       return true;
     }
   }
+
+  //internal class VsOutputLogger
+  //{
+  //  private static Lazy<Action<string>> _Logger = new Lazy<Action<string>>(() => GetWindow().OutputString);
+
+  //  private static Action<string> Logger
+  //  {
+  //    get { return _Logger.Value; }
+  //  }
+
+  //  public static void SetLogger(Action<string> logger)
+  //  {
+  //    _Logger = new Lazy<Action<string>>(() => logger);
+  //  }
+
+  //  public static void Write(string format, params object[] args)
+  //  {
+  //    var message = string.Format(format, args);
+  //    Write(message);
+  //  }
+
+  //  public static void Write(string message)
+  //  {
+  //    Logger(message + Environment.NewLine);
+  //  }
+
+  //  private static OutputWindowPane GetWindow()
+  //  {
+  //    var dte = (DTE2)Marshal.GetActiveObject("VisualStudio.DTE");
+  //    return dte.ToolWindows.OutputWindow.ActivePane;
+  //  }
+  //}
 }
