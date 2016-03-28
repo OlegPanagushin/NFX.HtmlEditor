@@ -12,8 +12,10 @@ using NFX.CodeAnalysis;
 using NFX.CodeAnalysis.CSharp;
 using NFX.CodeAnalysis.Laconfig;
 using NFX.CodeAnalysis.Source;
-using NFX.Environment;      
+using NFX.Environment;
 
+using EnvDTE;  
+using Microsoft.VisualStudio.Shell;
 
 namespace NFX.Classification
 {
@@ -45,9 +47,12 @@ namespace NFX.Classification
     [Import]
     internal IContentTypeRegistryService ContentTypeRegistryService { get; set; }
 
+    [Import]
+    internal SVsServiceProvider ServiceProvider = null;
+
     public ITagger<T> CreateTagger<T>(ITextBuffer buffer) where T : ITag
-    {
-      return new NfxClassifier(ClassificationTypeRegistry, BufferFactory, TagAggregatorFactoryService, ContentTypeRegistryService) as ITagger<T>;
+    {                                                            
+      return new NfxClassifier(ClassificationTypeRegistry, BufferFactory, TagAggregatorFactoryService, ContentTypeRegistryService, ServiceProvider) as ITagger<T>;
     }
   }
 
@@ -59,20 +64,41 @@ namespace NFX.Classification
     readonly IContentType _javaScripContentType;
     readonly ITextBufferFactoryService _bufferFactory;
     readonly IBufferTagAggregatorFactoryService _tagAggregatorFactoryService;
+    readonly OutputWindowPane outputWindow;
 
     object updateLock = new object();
+
+    readonly DTE _dte;
 
     internal NfxClassifier(
       IClassificationTypeRegistryService typeService,
       ITextBufferFactoryService bufferFactory,
       IBufferTagAggregatorFactoryService tagAggregatorFactoryService,
-      IContentTypeRegistryService contentTypeRegistryService)
+      IContentTypeRegistryService contentTypeRegistryService,
+      SVsServiceProvider sVsServiceProvider)
     {
       _bufferFactory = bufferFactory;
       _tagAggregatorFactoryService = tagAggregatorFactoryService;
 
       _cssContentType = contentTypeRegistryService.GetContentType("css");
       _javaScripContentType = contentTypeRegistryService.GetContentType("JavaScript");
+
+      _dte = (DTE) sVsServiceProvider.GetService(typeof (DTE));
+
+      var window = _dte.Windows.Item(EnvDTE.Constants.vsWindowKindOutput);
+      var ow = (OutputWindow)window.Object;
+
+      for (uint i = 1; i <= ow.OutputWindowPanes.Count; i++)
+      {
+        if (ow.OutputWindowPanes.Item(i).Name.Equals("NfxPane", StringComparison.CurrentCultureIgnoreCase))
+        {
+          outputWindow = ow.OutputWindowPanes.Item(i);
+          break;
+        }
+      }
+
+      if (outputWindow == null)
+        outputWindow = ow.OutputWindowPanes.Add("NfxPane");       
 
       _nfxTypes = new Dictionary<NfxTokenTypes, IClassificationType>
       {
@@ -261,8 +287,8 @@ namespace NFX.Classification
                 {
                   _errorTags = new List<ITagSpan<IErrorTag>>();
                   foreach (var message in ml)
-                  {
-                    //TODO messages to output                         
+                  { 
+                    this.outputWindow.OutputString(message + System.Environment.NewLine);
                     _errorTags.Add(CreateTagSpan(j, o - LACONFIG_END.Length - j));
                   }
                 }         
