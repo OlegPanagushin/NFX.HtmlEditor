@@ -9,7 +9,7 @@
 //using NFX.CodeAnalysis;
 //using NFX.CodeAnalysis.Laconfig;
 //using NFX.CodeAnalysis.Source;
-//using NFX.Environment;
+//using NFX.XDte;
 
 //namespace NFX.Error
 //{

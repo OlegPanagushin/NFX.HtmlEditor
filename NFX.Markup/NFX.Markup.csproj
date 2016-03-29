@@ -48,8 +48,9 @@
     <Compile Include="Classification\ClassificationFormat.cs" />
     <Compile Include="Classification\NfxClassificationDefinition.cs" />
     <Compile Include="Classification\NfxClassifier.cs" />
+    <Compile Include="DteHelper.cs" />
     <Compile Include="Error\NfxErrorTaggerProvider.cs" />
-    <Compile Include="Laconic\LaconicClassfier.cs" />
+    <Compile Include="Laconic\LaconicTagProvider.cs" />
     <Compile Include="NfxTokenTypes.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
