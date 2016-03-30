@@ -3,7 +3,7 @@ using System.Windows.Media;
 using Microsoft.VisualStudio.Text.Classification;
 using Microsoft.VisualStudio.Utilities;
 
-namespace NFX.Classification
+namespace NFX.Markup
 {
   [Export(typeof(EditorFormatDefinition))]
   [ClassificationType(ClassificationTypeNames = Consts.Nfx)]

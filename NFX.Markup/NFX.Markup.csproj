@@ -19,7 +19,7 @@
     <AppDesignerFolder>Properties</AppDesignerFolder>
     <RootNamespace>NFX</RootNamespace>
     <AssemblyName>NFX.Markup</AssemblyName>
-    <TargetFrameworkVersion>v4.6.1</TargetFrameworkVersion>
+    <TargetFrameworkVersion>v4.5</TargetFrameworkVersion>
     <GeneratePkgDefFile>false</GeneratePkgDefFile>
     <IncludeAssemblyInVSIXContainer>true</IncludeAssemblyInVSIXContainer>
     <IncludeDebugSymbolsInVSIXContainer>true</IncludeDebugSymbolsInVSIXContainer>
@@ -46,12 +46,12 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="Classification\ClassificationFormat.cs" />
-    <Compile Include="Classification\NfxClassificationDefinition.cs" />
-    <Compile Include="Classification\NfxClassifier.cs" />
-    <Compile Include="DteHelper.cs" />
-    <Compile Include="Error\NfxErrorTaggerProvider.cs" />
-    <Compile Include="Laconic\LaconicTagProvider.cs" />
-    <Compile Include="NfxTokenTypes.cs" />
+    <Compile Include="Classification\NhtTaggerProvider.cs" />
+    <Compile Include="Classification\ClassificationDefinition.cs" />
+    <Compile Include="Classification\Parser.cs" />
+    <Compile Include="Classification\DteHelper.cs" />
+    <Compile Include="Classification\LaconicTagProvider.cs" />
+    <Compile Include="Classification\TokenTypes.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
   <ItemGroup>

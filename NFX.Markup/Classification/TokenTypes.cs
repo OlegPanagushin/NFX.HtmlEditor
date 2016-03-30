@@ -1,4 +1,4 @@
-﻿namespace NFX
+﻿namespace NFX.Markup
 {
 	public enum NfxTokenTypes
 	{

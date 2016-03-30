@@ -8,14 +8,10 @@ using Microsoft.VisualStudio.Text;
 using Microsoft.VisualStudio.Text.Classification;
 using Microsoft.VisualStudio.Text.Tagging;
 using Microsoft.VisualStudio.Utilities;
-using NFX.CodeAnalysis;
-using NFX.CodeAnalysis.Laconfig;
-using NFX.CodeAnalysis.Source;
-using NFX.Environment;
 
-namespace NFX
+namespace NFX.Markup
 {
-  [ContentType("NfxLaconfig")]
+  [ContentType("Laconic")]
   [TagType(typeof(IClassificationTag))]
   [TagType(typeof(IErrorTag))]
   [Export(typeof(ITaggerProvider))]
@@ -23,12 +19,12 @@ namespace NFX
   {
     [Export]
     [BaseDefinition("code")]
-    [Name("NfxLaconfig")]
+    [Name("Laconic")]
     internal static ContentTypeDefinition NfxContentType { get; set; }
 
     [Export]
     [FileExtension(".laconf")]
-    [ContentType("NfxLaconfig")]
+    [ContentType("Laconic")]
     internal static FileExtensionToContentTypeDefinition NfxFileType { get; set; }
 
     [Import]
@@ -56,6 +52,7 @@ namespace NFX
       SVsServiceProvider sVsServiceProvider)
     {
       _outputWindow = DteHelper.GetOutputWindow(sVsServiceProvider);
+      _taskManager = new TaskManager(sVsServiceProvider);
 
       _nfxTypes = new Dictionary<NfxTokenTypes, IClassificationType>
       {
@@ -80,6 +77,7 @@ namespace NFX
     private ITextSnapshot _snapshot;
     private List<ITagSpan<IClassificationTag>> _oldtags;
     private static List<ITagSpan<IErrorTag>> _errorTags;
+    private TaskManager _taskManager;
 
     IEnumerable<ITagSpan<IErrorTag>> ITagger<IErrorTag>.GetTags(NormalizedSnapshotSpanCollection spans)
     {
@@ -117,13 +115,15 @@ namespace NFX
       _snapshot = newSpanshot;
 
       var sb = new StringBuilder();
+
+      //TODO Fix this bullshit
       for (var i = 0; i < newSpanshot.Length; i++)
       {
         sb.Append(newSpanshot[i]);
       }
 
       var text = sb.ToString();
-      var errorTags = GetLaconicTags(ref tags, text, _outputWindow, newSpanshot, _nfxTypes);
+      var errorTags = Parser.GetLaconicTags(ref tags, text, _taskManager, newSpanshot, _nfxTypes);
       lock (updateLock)
       {
         _errorTags = errorTags;
@@ -142,60 +142,7 @@ namespace NFX
       }
     }
 
-    internal static List<ITagSpan<IErrorTag>> GetLaconicTags(
-      ref List<ITagSpan<IClassificationTag>> classifierTags,
-      string src,
-      OutputWindowPane outputWindow,
-      ITextSnapshot snapshot,
-      IDictionary<NfxTokenTypes, IClassificationType> nfxTypes)
-    {
-      var ml = new MessageList();
-      var lxr = new LaconfigLexer(new StringSource(src), ml);
-      var cfg = new LaconicConfiguration();
-      var ctx = new LaconfigData(cfg);
-      var p = new LaconfigParser(ctx, lxr, ml);
-      p.Parse();
-      var errorTags = new List<ITagSpan<IErrorTag>>();
-      foreach (var message in ml)
-      {
-        outputWindow.OutputString($"{message}{System.Environment.NewLine}");
-        var start = message.Token.StartPosition.CharNumber > 4 ? message.Token.StartPosition.CharNumber - 5 : 0;
-        var length = src.Length - start > 10 ? 10 : src.Length - start;
-        errorTags.Add(CreateTagSpan(start, length, snapshot));
-      }
-      for (var i = 0; i < lxr.Tokens.Count; i++)
-      {
-        NfxTokenTypes? curType = null;
-        var token = lxr.Tokens[i];
-        if (token.IsComment)
-          curType = NfxTokenTypes.Comment;
-        else if (token.IsIdentifier)
-          curType = NfxTokenTypes.KeyWord;
-        else if (token.IsSymbol || token.IsOperator)
-          curType = NfxTokenTypes.Brace;
-        else if (token.IsLiteral)
-          curType = NfxTokenTypes.Literal;
-
-        if (curType.HasValue)
-          classifierTags.Add(CreateTagSpan(token.StartPosition.CharNumber - 1, token.Text.Length, nfxTypes[curType.Value], snapshot));
-      }
-      return errorTags;
-    }
-
-    internal static TagSpan<IClassificationTag> CreateTagSpan(int startIndex, int length, IClassificationType type, ITextSnapshot snapshot)
-    {
-      var tokenSpan = new SnapshotSpan(snapshot, new Span(startIndex, length));
-      return
-        new TagSpan<IClassificationTag>(tokenSpan,
-          new ClassificationTag(type));
-    }
-
-    internal static TagSpan<IErrorTag> CreateTagSpan(int startIndex, int length, ITextSnapshot snapshot)
-    {
-      var tokenSpan = new SnapshotSpan(snapshot, new Span(startIndex, length));
-      return
-        new TagSpan<IErrorTag>(tokenSpan, new ErrorTag());
-    }
+    
 
     public const string LACONFIG_START = "#<laconf>";
     public const string LACONFIG_END = "#</laconf>";

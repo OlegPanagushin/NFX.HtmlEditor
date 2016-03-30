@@ -2,7 +2,7 @@
 using Microsoft.VisualStudio.Text.Classification;
 using Microsoft.VisualStudio.Utilities;
 
-namespace NFX.Classification
+namespace NFX.Markup
 {
   internal static class NfxClassificationDefinition
   {
