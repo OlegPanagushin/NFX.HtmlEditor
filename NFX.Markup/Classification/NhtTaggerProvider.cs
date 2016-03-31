@@ -3,7 +3,7 @@ using Microsoft.VisualStudio.Shell;
 using Microsoft.VisualStudio.Text;
 using Microsoft.VisualStudio.Text.Classification;
 using Microsoft.VisualStudio.Text.Tagging;
-using Microsoft.VisualStudio.Utilities;    
+using Microsoft.VisualStudio.Utilities;
 using System;
 using System.Collections.Generic;
 using System.ComponentModel.Composition;
@@ -11,16 +11,17 @@ using System.Text;
 
 namespace NFX.Markup
 {
-  [Export(typeof(ITaggerProvider))]
   [ContentType(Consts.Nfx)]
   [TagType(typeof(IClassificationTag))]
   [TagType(typeof(IErrorTag))]
-  internal sealed class NhtTaggerProvider : ITaggerProvider
+	[Export(typeof(ITaggerProvider))]
+	[Export(typeof(IClassifierProvider))]
+	internal sealed class NhtTaggerProvider : ITaggerProvider, IClassifierProvider
   {
     [Export]
     [BaseDefinition("code")]
-    [BaseDefinition("htmlx")]
-    [Name(Consts.Nfx)]
+		[BaseDefinition("htmlx")]
+		[Name(Consts.Nfx)]
     internal static ContentTypeDefinition NfxContentType { get; set; }
 
     [Export]
@@ -47,9 +48,14 @@ namespace NFX.Markup
     {
       return new NhtTagger(ClassificationTypeRegistry, BufferFactory, TagAggregatorFactoryService, ContentTypeRegistryService, ServiceProvider) as ITagger<T>;
     }
+		public IClassifier GetClassifier(ITextBuffer buffer)
+		{
+			return buffer.Properties.GetOrCreateSingletonProperty<NhtTagger>(delegate { return new NhtTagger(ClassificationTypeRegistry, BufferFactory, TagAggregatorFactoryService, ContentTypeRegistryService, ServiceProvider); });
+		}
   }
 
-  internal sealed class NhtTagger : ITagger<IClassificationTag>, ITagger<IErrorTag>
+
+	internal sealed class NhtTagger : ITagger<IClassificationTag>, ITagger<IErrorTag>, IClassifier
   {
     readonly IDictionary<NfxTokenTypes, IClassificationType> _nfxTypes;
 
@@ -77,22 +83,21 @@ namespace NFX.Markup
       _outputWindow = DteHelper.GetOutputWindow(sVsServiceProvider);
       _taskManager = new TaskManager(sVsServiceProvider);
 
-      _nfxTypes = new Dictionary<NfxTokenTypes, IClassificationType>
-      {
-        [NfxTokenTypes.Laconf] = typeService.GetClassificationType(Consts.LaconfTokenName),
-        [NfxTokenTypes.Expression] = typeService.GetClassificationType(Consts.ExpressionTokenName),
-        [NfxTokenTypes.Statement] = typeService.GetClassificationType(Consts.ExpressionTokenName),
-        [NfxTokenTypes.ExpressionBrace] = typeService.GetClassificationType(Consts.ExpressionBraceTokenName),
-        [NfxTokenTypes.KeyWord] = typeService.GetClassificationType(Consts.KeyWordTokenName),
-        [NfxTokenTypes.Error] = typeService.GetClassificationType(Consts.ErrorTokenName),
-        [NfxTokenTypes.Brace] = typeService.GetClassificationType(Consts.BraceTokenName),
-        [NfxTokenTypes.Literal] = typeService.GetClassificationType(Consts.LiteralTokenName),
-        [NfxTokenTypes.Comment] = typeService.GetClassificationType(Consts.CommentTokenName),
-        [NfxTokenTypes.Special] = typeService.GetClassificationType(Consts.SpecialTokenName),
-        [NfxTokenTypes.Area] = typeService.GetClassificationType(Consts.AreaTokenName),
-        [NfxTokenTypes.ExpressionArea] = typeService.GetClassificationType(Consts.ExpressionAreaTokenName),
-        [NfxTokenTypes.StatementArea] = typeService.GetClassificationType(Consts.StatementAreaTokenName),
-      };
+      _nfxTypes = new Dictionary<NfxTokenTypes, IClassificationType>();
+			_nfxTypes.Add(NfxTokenTypes.Laconf, typeService.GetClassificationType(Consts.LaconfTokenName));
+			_nfxTypes.Add(NfxTokenTypes.Expression, typeService.GetClassificationType(Consts.ExpressionTokenName));
+			_nfxTypes.Add(NfxTokenTypes.Statement, typeService.GetClassificationType(Consts.ExpressionTokenName));
+			_nfxTypes.Add(NfxTokenTypes.ExpressionBrace, typeService.GetClassificationType(Consts.ExpressionBraceTokenName));
+			_nfxTypes.Add(NfxTokenTypes.KeyWord, typeService.GetClassificationType(Consts.KeyWordTokenName));
+			_nfxTypes.Add(NfxTokenTypes.Error, typeService.GetClassificationType(Consts.ErrorTokenName));
+			_nfxTypes.Add(NfxTokenTypes.Brace, typeService.GetClassificationType(Consts.BraceTokenName));
+			_nfxTypes.Add(NfxTokenTypes.Literal, typeService.GetClassificationType(Consts.LiteralTokenName));
+			_nfxTypes.Add(NfxTokenTypes.Comment, typeService.GetClassificationType(Consts.CommentTokenName));
+			_nfxTypes.Add(NfxTokenTypes.Special, typeService.GetClassificationType(Consts.SpecialTokenName));
+			_nfxTypes.Add(NfxTokenTypes.Area, typeService.GetClassificationType(Consts.AreaTokenName));
+			_nfxTypes.Add(NfxTokenTypes.ExpressionArea, typeService.GetClassificationType(Consts.ExpressionAreaTokenName));
+			_nfxTypes.Add(NfxTokenTypes.StatementArea, typeService.GetClassificationType(Consts.StatementAreaTokenName));
+    
     }
 
     public event EventHandler<SnapshotSpanEventArgs> TagsChanged;
@@ -114,8 +119,10 @@ namespace NFX.Markup
 
           lock (updateLock)
           {
-            TagsChanged?.Invoke(this,
-              new SnapshotSpanEventArgs(new SnapshotSpan(_snapshot, 0, _snapshot.Length)));
+            var t = TagsChanged;
+            if (t != null)
+              TagsChanged.Invoke(this,
+                new SnapshotSpanEventArgs(new SnapshotSpan(_snapshot, 0, _snapshot.Length)));
           }
         }
       }
@@ -319,7 +326,9 @@ namespace NFX.Markup
     {
       lock (updateLock)
       {
-        TagsChanged?.Invoke(this, new SnapshotSpanEventArgs(new SnapshotSpan(snapshotSpan, 0, snapshotSpan.Length)));
+        var t = TagsChanged;
+        if (t != null)
+          TagsChanged.Invoke(this, new SnapshotSpanEventArgs(new SnapshotSpan(snapshotSpan, 0, snapshotSpan.Length)));
       }
     }
 
@@ -333,5 +342,12 @@ namespace NFX.Markup
     public const string STYLE_END = "</style>";
     public const string SCRIPT_START = "<script>";
     public const string SCRIP_END = "</script>";
+
+		public event EventHandler<ClassificationChangedEventArgs> ClassificationChanged;
+		private List<ClassificationSpan> listOfSpans = new List<ClassificationSpan>();
+		public IList<ClassificationSpan> GetClassificationSpans(SnapshotSpan span)
+		{
+			return listOfSpans;
+		}
   }
 }
