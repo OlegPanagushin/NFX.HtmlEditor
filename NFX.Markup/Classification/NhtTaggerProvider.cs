@@ -19,9 +19,9 @@ namespace NFX.Markup
 	internal sealed class NhtTaggerProvider : ITaggerProvider, IClassifierProvider
   {
     [Export]
+    [BaseDefinition("html")]
     [BaseDefinition("code")]
-		[BaseDefinition("htmlx")]
-		[Name(Consts.Nfx)]
+    [Name(Consts.Nfx)]
     internal static ContentTypeDefinition NfxContentType { get; set; }
 
     [Export]
@@ -46,11 +46,14 @@ namespace NFX.Markup
 
     public ITagger<T> CreateTagger<T>(ITextBuffer buffer) where T : ITag
     {
-      return new NhtTagger(ClassificationTypeRegistry, BufferFactory, TagAggregatorFactoryService, ContentTypeRegistryService, ServiceProvider) as ITagger<T>;
+      var s = ContentTypeRegistryService.ContentTypes;
+      TaskManager.Init(ServiceProvider);
+      return new NhtTagger(ClassificationTypeRegistry, BufferFactory, TagAggregatorFactoryService, ContentTypeRegistryService) as ITagger<T>;
     }
 		public IClassifier GetClassifier(ITextBuffer buffer)
 		{
-			return buffer.Properties.GetOrCreateSingletonProperty<NhtTagger>(delegate { return new NhtTagger(ClassificationTypeRegistry, BufferFactory, TagAggregatorFactoryService, ContentTypeRegistryService, ServiceProvider); });
+      TaskManager.Init(ServiceProvider);
+			return buffer.Properties.GetOrCreateSingletonProperty<NhtTagger>(delegate { return new NhtTagger(ClassificationTypeRegistry, BufferFactory, TagAggregatorFactoryService, ContentTypeRegistryService); });
 		}
   }
 
@@ -63,7 +66,6 @@ namespace NFX.Markup
     readonly IContentType _javaScripContentType;
     readonly ITextBufferFactoryService _bufferFactory;
     readonly IBufferTagAggregatorFactoryService _tagAggregatorFactoryService;
-    readonly OutputWindowPane _outputWindow;
 
     object updateLock = new object();
 
@@ -71,8 +73,7 @@ namespace NFX.Markup
       IClassificationTypeRegistryService typeService,
       ITextBufferFactoryService bufferFactory,
       IBufferTagAggregatorFactoryService tagAggregatorFactoryService,
-      IContentTypeRegistryService contentTypeRegistryService,
-      SVsServiceProvider sVsServiceProvider)
+      IContentTypeRegistryService contentTypeRegistryService)
     {
       _bufferFactory = bufferFactory;
       _tagAggregatorFactoryService = tagAggregatorFactoryService;
@@ -80,8 +81,6 @@ namespace NFX.Markup
       _cssContentType = contentTypeRegistryService.GetContentType("css");
       _javaScripContentType = contentTypeRegistryService.GetContentType("JavaScript");
 
-      _outputWindow = DteHelper.GetOutputWindow(sVsServiceProvider);
-      _taskManager = new TaskManager(sVsServiceProvider);
 
       _nfxTypes = new Dictionary<NfxTokenTypes, IClassificationType>();
 			_nfxTypes.Add(NfxTokenTypes.Laconf, typeService.GetClassificationType(Consts.LaconfTokenName));
@@ -105,7 +104,6 @@ namespace NFX.Markup
     private ITextSnapshot _snapshot;
     private List<ITagSpan<IClassificationTag>> _oldtags;
     private static List<ITagSpan<IErrorTag>> _errorTags;
-    private TaskManager _taskManager;
 
     IEnumerable<ITagSpan<IErrorTag>> ITagger<IErrorTag>.GetTags(NormalizedSnapshotSpanCollection spans)
     {
@@ -237,7 +235,7 @@ namespace NFX.Markup
 
         if (text[k] == '#' && text[k] == '#' && (k == 0 || text[k - 1] != '#'))     //class section
         {
-          if (text.Length - k > CLASS_AREA_FULL.Length &&
+          if (text.Length - k >= CLASS_AREA_FULL.Length &&
               text.Substring(k, CLASS_AREA_FULL.Length) == CLASS_AREA_FULL) //#[class]
           {
             var j = k + CLASS_AREA_FULL.Length;
@@ -249,20 +247,20 @@ namespace NFX.Markup
 
         if (text[k] == '#' && text[k] == '#' && (k == 0 || text[k - 1] != '#'))       //laconic config
         {
-          if (text.Length - k > LACONFIG_START.Length &&
+          if (text.Length - k >= LACONFIG_START.Length &&
               text.Substring(k, LACONFIG_START.Length) == LACONFIG_START) //#<laconf>
           {
             var o = k + 1;
             while (o < text.Length)
             {
-              if (text.Length - o > LACONFIG_END.Length && text[o] == '#' &&
+              if (text.Length - o >= LACONFIG_END.Length && text[o] == '#' &&
                   text.Substring(o, LACONFIG_END.Length) == LACONFIG_END) //#<laconf>
               {
                 tags.Add(Parser.CreateTagSpan(k, LACONFIG_START.Length, _nfxTypes[NfxTokenTypes.Laconf], _snapshot)); //#<laconf>
                 tags.Add(Parser.CreateTagSpan(o, LACONFIG_END.Length, _nfxTypes[NfxTokenTypes.Laconf], _snapshot)); //#<laconf>
 
                 var j = k + LACONFIG_START.Length;
-                errorTags = Parser.GetLaconicTags(ref tags, text.Substring(j, o - j), _taskManager, _snapshot, _nfxTypes, j);
+                errorTags = Parser.GetLaconicTags(ref tags, text.Substring(j, o - j), _snapshot, _nfxTypes, j);
                 break;
               }
               o++;
@@ -278,7 +276,7 @@ namespace NFX.Markup
             var o = k + STYLE_START.Length;
             while (o < text.Length)
             {
-              if (text.Length - o > STYLE_END.Length &&
+              if (text.Length - o >= STYLE_END.Length &&
                   text.Substring(o, STYLE_END.Length) == STYLE_END)
               {
                 var tt = text.Substring(k + STYLE_START.Length, o - k - STYLE_START.Length);
@@ -299,7 +297,7 @@ namespace NFX.Markup
             var o = k + SCRIPT_START.Length;
             while (o < text.Length)
             {
-              if (text.Length - o > SCRIP_END.Length &&
+              if (text.Length - o >= SCRIP_END.Length &&
                   text.Substring(o, SCRIP_END.Length) == SCRIP_END)
               {
                 var tt = text.Substring(k + SCRIPT_START.Length, o - k - SCRIPT_START.Length);

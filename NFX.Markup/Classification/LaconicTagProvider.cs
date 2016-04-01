@@ -36,10 +36,12 @@ namespace NFX.Markup
 
 		public ITagger<T> CreateTagger<T>(ITextBuffer buffer) where T : ITag
 		{
+      TaskManager.Init(ServiceProvider);
 			return new LaconicClassifier(ClassificationTypeRegistry, ServiceProvider) as ITagger<T>;
 		}
 		public IClassifier GetClassifier(ITextBuffer buffer)
 		{
+      TaskManager.Init(ServiceProvider);
 			return buffer.Properties.GetOrCreateSingletonProperty<LaconicClassifier>(delegate { return new LaconicClassifier(ClassificationTypeRegistry, ServiceProvider); });
 		}
 	}
@@ -57,7 +59,7 @@ namespace NFX.Markup
 			SVsServiceProvider sVsServiceProvider)
 		{
 			_outputWindow = DteHelper.GetOutputWindow(sVsServiceProvider);
-			_taskManager = new TaskManager(sVsServiceProvider);
+			TaskManager.Init(sVsServiceProvider);
 
 			_nfxTypes = new Dictionary<NfxTokenTypes, IClassificationType>();
 			_nfxTypes.Add(NfxTokenTypes.Laconf, typeService.GetClassificationType(Consts.LaconfTokenName));
@@ -80,7 +82,6 @@ namespace NFX.Markup
 		private ITextSnapshot _snapshot;
 		private List<ITagSpan<IClassificationTag>> _oldtags;
 		private static List<ITagSpan<IErrorTag>> _errorTags;
-		private TaskManager _taskManager;
 
 		IEnumerable<ITagSpan<IErrorTag>> ITagger<IErrorTag>.GetTags(NormalizedSnapshotSpanCollection spans)
 		{
@@ -128,7 +129,7 @@ namespace NFX.Markup
 			}
 
 			var text = sb.ToString();
-			var errorTags = Parser.GetLaconicTags(ref tags, text, _taskManager, newSpanshot, _nfxTypes);
+			var errorTags = Parser.GetLaconicTags(ref tags, text, newSpanshot, _nfxTypes);
 			lock (updateLock)
 			{
 				_errorTags = errorTags;

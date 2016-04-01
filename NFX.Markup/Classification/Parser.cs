@@ -88,8 +88,7 @@ namespace NFX.Markup
     }
     internal static List<ITagSpan<IErrorTag>> GetLaconicTags(
       ref List<ITagSpan<IClassificationTag>> classifierTags,
-      string src,
-      TaskManager taskManager,
+      string src,             
       ITextSnapshot snapshot,
       IDictionary<NfxTokenTypes, IClassificationType> nfxTypes,
       int startPosition = 0)
@@ -101,11 +100,11 @@ namespace NFX.Markup
       var p = new LaconfigParser(ctx, lxr, ml);
       p.Parse();
       var errorTags = new List<ITagSpan<IErrorTag>>();
-      taskManager.Refresh();
+      TaskManager.Refresh();
       foreach (var message in ml)
       {
         //outputWindow.OutputString($"{message}{System.Environment.NewLine}");
-        taskManager.AddError(message);
+        TaskManager.AddError(message);
         var start = message.Token == null ?    0:
           message.Token.StartPosition.CharNumber > 4 
             ? message.Token.StartPosition.CharNumber - 5 : 0;

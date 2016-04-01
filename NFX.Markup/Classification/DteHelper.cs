@@ -23,36 +23,37 @@ namespace NFX.Markup
       return ow.OutputWindowPanes.Add("NfxPane");
     }
   }
-  internal class TaskManager
+  internal static class TaskManager
   {
-    private ErrorListProvider _errorListProvider;
+    private static ErrorListProvider _errorListProvider;
 
-    public TaskManager(SVsServiceProvider serviceProvider)
+    public static void Init(SVsServiceProvider serviceProvider)
     {
+      if (_errorListProvider == null)
       _errorListProvider = new ErrorListProvider(serviceProvider);
     }
 
-    public void AddError(Message message)
+    public static void AddError(Message message)
     {
       AddTask(message, TaskErrorCategory.Error);
     }
 
-    public void AddWarning(Message message)
+    public static void AddWarning(Message message)
     {
       AddTask(message, TaskErrorCategory.Warning);
     }
 
-    public void AddMessage(Message message)
+    public static void AddMessage(Message message)
     {
       AddTask(message, TaskErrorCategory.Message);
     }
 
-    public void Refresh()
+    public static void Refresh()
     {
       _errorListProvider.Tasks.Clear();
     }
 
-    private void AddTask(Message message, TaskErrorCategory category)
+    private static void AddTask(Message message, TaskErrorCategory category)
     {
       _errorListProvider.Tasks.Add(new ErrorTask
       {
